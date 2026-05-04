@@ -1,0 +1,17 @@
+{
+  "name": "backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "docxtemplater": "^3.48.1",
+    "docxtemplater-image-module-free": "^1.1.1",
+    "express": "^4.19.2",
+    "pizzip": "^3.1.7"
+  }
+}

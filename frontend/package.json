@@ -9,6 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "docxtemplater": "^3.66.7",
+    "docxtemplater-image-module-free": "^1.1.1",
+    "pizzip": "^3.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

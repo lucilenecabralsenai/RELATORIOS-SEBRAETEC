@@ -1,22 +1,23 @@
-# Gerador de Relatórios SEBRAETEC
+# Gerador de Relatórios SEBRAETEC (Client-side)
 
-Aplicação web com React + Node.js/Express para preencher e gerar relatórios `.docx` a partir do arquivo modelo `RELATÓRIO - JM CONFECÇÕES.docx`.
+Aplicação React que gera relatórios `.docx` totalmente no navegador, sem backend Node/Express, compatível com GitHub Pages.
 
-## Como funciona
+## Requisitos
 
-- Front-end: formulário completo com dados de projeto, empresa, consultor, etapas, datas, plano de ação, assinaturas e registro fotográfico.
-- Back-end: endpoint `POST /api/gerar-relatorio` que usa `docxtemplater` + módulo de imagem para renderizar o `.docx` preservando layout do modelo (logos, cabeçalho, tabelas, rodapé e páginas especiais).
+1. Coloque o modelo `RELATÓRIO - JM CONFECÇÕES.docx` em `frontend/public/`.
+2. Garanta que o `.docx` possua as tags do docxtemplater (campos e loops para etapas/fotos).
 
-## Pré-requisitos
-
-- Coloque o arquivo **`RELATÓRIO - JM CONFECÇÕES.docx`** na raiz do projeto.
-- O `.docx` deve conter tags do docxtemplater (ex.: `{projeto}`, `{empresa}`, loops de etapas/fotos etc.).
-
-## Executar
+## Executar localmente
 
 ```bash
 npm install
 npm run dev
 ```
 
-Front-end em `http://localhost:5173` e API em `http://localhost:3001`.
+## Build para GitHub Pages
+
+```bash
+npm run build
+```
+
+A pasta de saída será `frontend/dist/`.

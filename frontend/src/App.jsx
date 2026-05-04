@@ -1,16 +1,41 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import PizZip from 'pizzip';
+import Docxtemplater from 'docxtemplater';
+import ImageModule from 'docxtemplater-image-module-free';
 
-const emptyEtapa = { titulo: '', descricao: '', data: '' };
-const emptyAcao = { acao: '', responsavel: '', prazo: '', status: '' };
-const emptyFoto = { legenda: '', arquivo: null };
+const TEMPLATE_FILE = '/RELATÓRIO - JM CONFECÇÕES.docx';
+
+const emptyEtapa = { periodo: '', ch: '', acao: '', estrategias: '' };
+const emptyFoto = { legenda: '', arquivo: null, preview: '' };
+
+const initialForm = {
+  projetoNome: '',
+  projetoNumero: '',
+  razaoSocial: '',
+  contatoEmpresa: '',
+  entidadeExecutora: 'SENAI – CET Aluísio Bezerra',
+  consultorResponsavel: '',
+  objetivoPlanoAcao: '',
+  diagnostico: '',
+  relatorioFinal: '',
+  termoEncerramento: '',
+  localData: '',
+  assinaturaConsultor: '',
+  assinaturaEmpresa: '',
+  assinaturaResponsavelSebrae: '',
+  etapas: [emptyEtapa],
+  fotos: [emptyFoto],
+};
 
 export default function App() {
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
-    projeto: '', empresa: '', consultor: '', periodoInicio: '', periodoFim: '',
-    textoIntroducao: '', textoConclusao: '', assinaturaConsultor: '', assinaturaEmpresa: '',
-    etapas: [emptyEtapa], planoAcao: [emptyAcao], fotos: [emptyFoto],
-  });
+  const [form, setForm] = useState(initialForm);
+  const [message, setMessage] = useState('');
+
+  const fotosValidas = useMemo(
+    () => form.fotos.filter((f) => f.arquivo && f.preview).map((f) => ({ legenda: f.legenda, imagem: f.preview })),
+    [form.fotos],
+  );
 
   const update = (key, value) => setForm((p) => ({ ...p, [key]: value }));
 
@@ -20,112 +45,144 @@ export default function App() {
     update(listKey, list);
   };
 
-  const addRow = (listKey, empty) => update(listKey, [...form[listKey], empty]);
+  const addRow = (listKey, empty) => update(listKey, [...form[listKey], { ...empty }]);
+
+  const handleFile = async (index, file) => {
+    const preview = file ? await toDataUrl(file) : '';
+    const list = [...form.fotos];
+    list[index] = { ...list[index], arquivo: file, preview };
+    update('fotos', list);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setMessage('');
 
-    const body = {
-      ...form,
-      fotos: await Promise.all(form.fotos.filter((f) => f.arquivo).map(async (f) => ({
-        legenda: f.legenda,
-        nome: f.arquivo.name,
-        tipo: f.arquivo.type,
-        base64: await toBase64(f.arquivo),
-      }))),
-    };
+    try {
+      const response = await fetch(TEMPLATE_FILE);
+      if (!response.ok) throw new Error('Não foi possível carregar o modelo DOCX em /public.');
 
-    const response = await fetch('http://localhost:3001/api/gerar-relatorio', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+      const template = await response.arrayBuffer();
+      const zip = new PizZip(template);
 
-    if (!response.ok) {
-      alert('Erro ao gerar relatório');
+      const imageModule = new ImageModule({
+        centered: false,
+        getImage: (tagValue) => dataUrlToBinaryString(tagValue),
+        getSize: () => [480, 270],
+      });
+
+      const doc = new Docxtemplater(zip, {
+        modules: [imageModule],
+        paragraphLoop: true,
+        linebreaks: true,
+      });
+
+      doc.render({
+        ...form,
+        data_geracao: new Date().toLocaleDateString('pt-BR'),
+        etapas: form.etapas,
+        fotos: fotosValidas,
+      });
+
+      const output = doc.getZip().generate({
+        type: 'blob',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(output);
+      link.download = `RELATORIO-${(form.projetoNome || 'SEBRAETEC').replace(/\s+/g, '-').toUpperCase()}.docx`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      setMessage('Relatório gerado com sucesso.');
+    } catch (error) {
+      setMessage(`Erro ao gerar DOCX: ${error.message}`);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'relatorio-gerado.docx';
-    a.click();
-    URL.revokeObjectURL(url);
-    setLoading(false);
   };
 
   return (
     <main className="container">
-      <h1>Gerador de Relatórios Word</h1>
+      <h1>Gerador de Relatórios SEBRAETEC (.docx)</h1>
+      <p>Processamento 100% no navegador. Compatível com GitHub Pages.</p>
       <form onSubmit={handleSubmit}>
         <section>
-          <h2>Dados gerais</h2>
-          <input placeholder="Projeto" value={form.projeto} onChange={(e) => update('projeto', e.target.value)} required />
-          <input placeholder="Empresa" value={form.empresa} onChange={(e) => update('empresa', e.target.value)} required />
-          <input placeholder="Consultor" value={form.consultor} onChange={(e) => update('consultor', e.target.value)} required />
-          <label>Início<input type="date" value={form.periodoInicio} onChange={(e) => update('periodoInicio', e.target.value)} /></label>
-          <label>Fim<input type="date" value={form.periodoFim} onChange={(e) => update('periodoFim', e.target.value)} /></label>
-          <textarea placeholder="Introdução" value={form.textoIntroducao} onChange={(e) => update('textoIntroducao', e.target.value)} />
-          <textarea placeholder="Conclusão" value={form.textoConclusao} onChange={(e) => update('textoConclusao', e.target.value)} />
+          <h2>Dados do projeto e empresa</h2>
+          {renderInput('Nome do projeto', form.projetoNome, (v) => update('projetoNome', v), true)}
+          {renderInput('Número do projeto', form.projetoNumero, (v) => update('projetoNumero', v), true)}
+          {renderInput('Razão social da empresa', form.razaoSocial, (v) => update('razaoSocial', v), true)}
+          {renderInput('Contato na empresa', form.contatoEmpresa, (v) => update('contatoEmpresa', v), true)}
+          {renderInput('Entidade executora', form.entidadeExecutora, (v) => update('entidadeExecutora', v), true)}
+          {renderInput('Consultor responsável', form.consultorResponsavel, (v) => update('consultorResponsavel', v), true)}
         </section>
 
         <section>
-          <h2>Etapas</h2>
+          <h2>Plano de ação / etapas</h2>
+          {renderTextarea('Objetivo', form.objetivoPlanoAcao, (v) => update('objetivoPlanoAcao', v), true)}
           {form.etapas.map((etapa, i) => (
             <div key={i} className="row">
-              <input placeholder="Título" value={etapa.titulo} onChange={(e) => updateListItem('etapas', i, 'titulo', e.target.value)} />
-              <input placeholder="Descrição" value={etapa.descricao} onChange={(e) => updateListItem('etapas', i, 'descricao', e.target.value)} />
-              <input type="date" value={etapa.data} onChange={(e) => updateListItem('etapas', i, 'data', e.target.value)} />
+              <input placeholder="Período" value={etapa.periodo} onChange={(e) => updateListItem('etapas', i, 'periodo', e.target.value)} required />
+              <input placeholder="CH" value={etapa.ch} onChange={(e) => updateListItem('etapas', i, 'ch', e.target.value)} required />
+              <input placeholder="Ação a ser realizada" value={etapa.acao} onChange={(e) => updateListItem('etapas', i, 'acao', e.target.value)} required />
+              <input placeholder="Estratégias" value={etapa.estrategias} onChange={(e) => updateListItem('etapas', i, 'estrategias', e.target.value)} required />
             </div>
           ))}
-          <button type="button" onClick={() => addRow('etapas', emptyEtapa)}>+ Etapa</button>
+          <button type="button" onClick={() => addRow('etapas', emptyEtapa)}>+ Adicionar etapa</button>
         </section>
 
         <section>
-          <h2>Plano de ação</h2>
-          {form.planoAcao.map((acao, i) => (
-            <div key={i} className="row">
-              <input placeholder="Ação" value={acao.acao} onChange={(e) => updateListItem('planoAcao', i, 'acao', e.target.value)} />
-              <input placeholder="Responsável" value={acao.responsavel} onChange={(e) => updateListItem('planoAcao', i, 'responsavel', e.target.value)} />
-              <input type="date" value={acao.prazo} onChange={(e) => updateListItem('planoAcao', i, 'prazo', e.target.value)} />
-              <input placeholder="Status" value={acao.status} onChange={(e) => updateListItem('planoAcao', i, 'status', e.target.value)} />
-            </div>
-          ))}
-          <button type="button" onClick={() => addRow('planoAcao', emptyAcao)}>+ Ação</button>
+          <h2>Diagnóstico, relatório final e encerramento</h2>
+          {renderTextarea('Diagnóstico', form.diagnostico, (v) => update('diagnostico', v), true)}
+          {renderTextarea('Relatório final', form.relatorioFinal, (v) => update('relatorioFinal', v), true)}
+          {renderTextarea('Termo de encerramento', form.termoEncerramento, (v) => update('termoEncerramento', v), true)}
+          {renderInput('Local e data', form.localData, (v) => update('localData', v), true)}
         </section>
 
         <section>
           <h2>Assinaturas</h2>
-          <input placeholder="Assinatura consultor" value={form.assinaturaConsultor} onChange={(e) => update('assinaturaConsultor', e.target.value)} />
-          <input placeholder="Assinatura empresa" value={form.assinaturaEmpresa} onChange={(e) => update('assinaturaEmpresa', e.target.value)} />
+          {renderInput('Consultor(a)', form.assinaturaConsultor, (v) => update('assinaturaConsultor', v), true)}
+          {renderInput('Empresa demandante', form.assinaturaEmpresa, (v) => update('assinaturaEmpresa', v), true)}
+          {renderInput('Responsável SEBRAETEC', form.assinaturaResponsavelSebrae, (v) => update('assinaturaResponsavelSebrae', v), true)}
         </section>
 
         <section>
-          <h2>Registro fotográfico</h2>
+          <h2>Fotos e legendas</h2>
           {form.fotos.map((foto, i) => (
             <div key={i} className="row">
-              <input placeholder="Legenda" value={foto.legenda} onChange={(e) => updateListItem('fotos', i, 'legenda', e.target.value)} />
-              <input type="file" accept="image/*" onChange={(e) => updateListItem('fotos', i, 'arquivo', e.target.files?.[0] ?? null)} />
+              <input placeholder="Legenda da foto" value={foto.legenda} onChange={(e) => updateListItem('fotos', i, 'legenda', e.target.value)} />
+              <input type="file" accept="image/*" onChange={(e) => handleFile(i, e.target.files?.[0] ?? null)} />
             </div>
           ))}
-          <button type="button" onClick={() => addRow('fotos', emptyFoto)}>+ Foto</button>
+          <button type="button" onClick={() => addRow('fotos', emptyFoto)}>+ Adicionar foto</button>
         </section>
 
-        <button type="submit" disabled={loading}>{loading ? 'Gerando...' : 'Gerar .docx'}</button>
+        <button type="submit" disabled={loading}>{loading ? 'Gerando...' : 'Gerar relatório .docx'}</button>
+        {message && <p>{message}</p>}
       </form>
     </main>
   );
 }
 
-function toBase64(file) {
+function renderInput(label, value, onChange, required = false) {
+  return <input placeholder={label} value={value} onChange={(e) => onChange(e.target.value)} required={required} />;
+}
+
+function renderTextarea(label, value, onChange, required = false) {
+  return <textarea rows={4} placeholder={label} value={value} onChange={(e) => onChange(e.target.value)} required={required} />;
+}
+
+function toDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onload = () => resolve(String(reader.result));
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function dataUrlToBinaryString(dataUrl) {
+  const base64 = dataUrl.split(',')[1] ?? '';
+  return atob(base64);
 }
